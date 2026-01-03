@@ -12,19 +12,19 @@ class ProvinceSerializer(serializers.ModelSerializer):
 
 
 class CitySerializer(serializers.ModelSerializer):
-    province_name = serializers.CharField(source='province.name', read_only=True)
+    provinceName = serializers.CharField(source='province.name', read_only=True)
     
     class Meta:
         model = City
-        fields = ['id', 'name', 'province_name']
+        fields = ['id', 'name', 'provinceName']
 
 
 class BarangaySerializer(serializers.ModelSerializer):
-    city_name = serializers.CharField(source='city.name', read_only=True)
+    cityName = serializers.CharField(source='city.name', read_only=True)
     
     class Meta:
         model = Barangay
-        fields = ['id', 'name', 'city_name']
+        fields = ['id', 'name', 'cityName']
 
 
 class DegreeProgramSerializer(serializers.ModelSerializer):
@@ -34,25 +34,28 @@ class DegreeProgramSerializer(serializers.ModelSerializer):
 
 
 class VerificationHistorySerializer(serializers.ModelSerializer):
-    performed_by_name = serializers.SerializerMethodField()
+    performedByName = serializers.SerializerMethodField()
     
     class Meta:
         model = VerificationHistory
-        fields = ['id', 'action', 'performed_by_name', 'notes', 'timestamp']
+        fields = ['id', 'action', 'performedByName', 'notes', 'timestamp']
     
-    def get_performed_by_name(self, obj):
+    def get_performedByName(self, obj):
         return obj.performed_by.get_full_name() if obj.performed_by else 'System'
 
 
 class MembershipApplicationListSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     degree = serializers.CharField(source='degree_program.name')
+    yearGraduated = serializers.CharField(source='year_graduated')
+    studentNumber = serializers.CharField(source='student_number')
+    dateApplied = serializers.DateTimeField(source='date_applied')
     
     class Meta:
         model = MembershipApplication
         fields = [
-            'id', 'name', 'email', 'degree', 'year_graduated',
-            'student_number', 'status', 'date_applied'
+            'id', 'name', 'email', 'degree', 'yearGraduated',
+            'studentNumber', 'status', 'dateApplied'
         ]
     
     def get_name(self, obj):
@@ -60,35 +63,44 @@ class MembershipApplicationListSerializer(serializers.ModelSerializer):
 
 
 class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
-    province_name = serializers.CharField(source='province.name', read_only=True)
-    city_name = serializers.CharField(source='city.name', read_only=True)
-    barangay_name = serializers.CharField(source='barangay.name', read_only=True)
-    degree_program_name = serializers.CharField(source='degree_program.name', read_only=True)
-    history = VerificationHistorySerializer(many=True, read_only=True)
+    provinceName = serializers.CharField(source='province.name', read_only=True)
+    cityName = serializers.CharField(source='city.name', read_only=True)
+    barangayName = serializers.CharField(source='barangay.name', read_only=True)
+    degreeProgramName = serializers.CharField(source='degree_program.name', read_only=True)
     
-    personal_details = serializers.SerializerMethodField()
-    academic_status = serializers.SerializerMethodField()
+    personalDetails = serializers.SerializerMethodField()
+    academicStatus = serializers.SerializerMethodField()
     professional = serializers.SerializerMethodField()
     membership = serializers.SerializerMethodField()
+    
+    dateApplied = serializers.DateTimeField(source='date_applied')
+    alumniVerifiedAt = serializers.DateTimeField(source='alumni_verified_at')
+    approvedAt = serializers.DateTimeField(source='approved_at')
+    rejectedAt = serializers.DateTimeField(source='rejected_at')
+    rejectionStage = serializers.CharField(source='rejection_stage')
+    rejectionReason = serializers.CharField(source='rejection_reason')
+    adminNotes = serializers.CharField(source='admin_notes')
     
     class Meta:
         model = MembershipApplication
         fields = [
-            'id', 'status', 'date_applied',
-            'personal_details', 'academic_status', 'professional', 'membership',
-            'province_name', 'city_name', 'barangay_name', 'degree_program_name',
-            'alumni_verified_at', 'approved_at', 'rejected_at',
-            'rejection_stage', 'rejection_reason', 'admin_notes', 'history'
+            'id', 'status', 'dateApplied',
+            'personalDetails', 'academicStatus', 'professional', 'membership',
+            'provinceName', 'cityName', 'barangayName', 'degreeProgramName',
+            'alumniVerifiedAt', 'approvedAt', 'rejectedAt',
+            'rejectionStage', 'rejectionReason', 'adminNotes', 'history'
         ]
     
-    def get_personal_details(self, obj):
+    history = VerificationHistorySerializer(many=True, read_only=True)
+    
+    def get_personalDetails(self, obj):
         return {
             'title': obj.title,
             'firstName': obj.first_name,
             'lastName': obj.last_name,
             'suffix': obj.suffix,
             'maidenName': obj.maiden_name,
-            'dateOfBirth': obj.date_of_birth,
+            'dateOfBirth': str(obj.date_of_birth),
             'email': obj.email,
             'mobileNumber': obj.mobile_number,
             'currentAddress': obj.current_address,
@@ -97,7 +109,7 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
             'barangay': obj.barangay.name,
         }
     
-    def get_academic_status(self, obj):
+    def get_academicStatus(self, obj):
         return {
             'degreeProgram': obj.degree_program.name,
             'yearGraduated': obj.year_graduated,
@@ -118,47 +130,97 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
 
 
 class MembershipApplicationCreateSerializer(serializers.Serializer):
-    personal_details = serializers.DictField()
-    academic_status = serializers.DictField()
-    professional = serializers.DictField(required=False)
-    membership = serializers.DictField()
+    personalDetails = serializers.DictField(required=False) 
+    academicStatus = serializers.DictField(required=False)
     
-    def validate_personal_details(self, value):
-        required_fields = [
-            'title', 'firstName', 'lastName', 'dateOfBirth',
-            'email', 'mobileNumber', 'currentAddress',
-            'province', 'city', 'barangay'
-        ]
+    professional = serializers.DictField(required=False)
+    membership = serializers.DictField(required=False)
+    
+    def validate(self, data):
+        # Handle both naming conventions (prefer camelCase)
+        personal = data.get('personalDetails') or data.get('personal_details')
+        academic = data.get('academicStatus') or data.get('academic_status')
+        professional = data.get('professional', {})
+        membership = data.get('membership')
         
-        for field in required_fields:
-            if field not in value:
-                raise serializers.ValidationError(f"{field} is required")
+        if not personal:
+            raise serializers.ValidationError({
+                'personalDetails': 'This field is required'
+            })
+        
+        if not academic:
+            raise serializers.ValidationError({
+                'academicStatus': 'This field is required'
+            })
+        
+        if not membership:
+            raise serializers.ValidationError({
+                'membership': 'This field is required'
+            })
+        
+        # Validate personal details fields
+        required_personal_fields = {
+            'title': 'Title',
+            'firstName': 'First Name',
+            'lastName': 'Last Name',
+            'dateOfBirth': 'Date of Birth',
+            'email': 'Email',
+            'mobileNumber': 'Mobile Number',
+            'currentAddress': 'Current Address',
+            'province': 'Province',
+            'city': 'City',
+            'barangay': 'Barangay'
+        }
+        
+        for field, label in required_personal_fields.items():
+            if field not in personal:
+                raise serializers.ValidationError({
+                    'personalDetails': {field: f'{label} is required'}
+                })
         
         # Validate email
-        email = value.get('email')
-        if email and email.endswith('@up.edu.ph'):
-            raise serializers.ValidationError("Email must not end with @up.edu.ph")
+        email = personal.get('email')
+        if email:
+            if email.endswith('@up.edu.ph'):
+                raise serializers.ValidationError({
+                    'personalDetails': {'email': 'Email must not end with @up.edu.ph'}
+                })
+            
+            if MembershipApplication.objects.filter(email=email).exists():
+                raise serializers.ValidationError({
+                    'personalDetails': {'email': 'Email already registered'}
+                })
         
-        # Check if email already exists
-        if MembershipApplication.objects.filter(email=email).exists():
-            raise serializers.ValidationError("Email already registered")
+        # Validate academic status
+        if 'degreeProgram' not in academic:
+            raise serializers.ValidationError({
+                'academicStatus': {'degreeProgram': 'Degree Program is required'}
+            })
         
-        return value
-    
-    def validate_academic_status(self, value):
-        required_fields = ['degreeProgram', 'yearGraduated']
+        if 'yearGraduated' not in academic:
+            raise serializers.ValidationError({
+                'academicStatus': {'yearGraduated': 'Year Graduated is required'}
+            })
         
-        for field in required_fields:
-            if field not in value:
-                raise serializers.ValidationError(f"{field} is required")
+        # Validate membership
+        if 'paymentMethod' not in membership:
+            raise serializers.ValidationError({
+                'membership': {'paymentMethod': 'Payment Method is required'}
+            })
         
-        return value
-    
-    def validate_membership(self, value):
-        if 'paymentMethod' not in value:
-            raise serializers.ValidationError("paymentMethod is required")
+        # Validate payment method choice
+        valid_payment_methods = ['gcash', 'bank', 'cash']
+        if membership['paymentMethod'] not in valid_payment_methods:
+            raise serializers.ValidationError({
+                'membership': {'paymentMethod': f'Must be one of: {", ".join(valid_payment_methods)}'}
+            })
         
-        return value
+        return {
+            'personal_details': personal,
+            'academic_status': academic,
+            'professional': professional,
+            'membership': membership
+        }
     
     def create(self, validated_data):
         personal = validated_data['personal_details']
@@ -166,11 +228,20 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
         professional = validated_data.get('professional', {})
         membership = validated_data['membership']
         
-        # Get related objects by name
-        province = Province.objects.get(name=personal['province'])
-        city = City.objects.get(name=personal['city'], province=province)
-        barangay = Barangay.objects.get(name=personal['barangay'], city=city)
-        degree_program = DegreeProgram.objects.get(name=academic['degreeProgram'])
+        try:
+            # Get related objects by name
+            province = Province.objects.get(name=personal['province'])
+            city = City.objects.get(name=personal['city'], province=province)
+            barangay = Barangay.objects.get(name=personal['barangay'], city=city)
+            degree_program = DegreeProgram.objects.get(name=academic['degreeProgram'])
+        except Province.DoesNotExist:
+            raise serializers.ValidationError({'personalDetails': {'province': 'Invalid province'}})
+        except City.DoesNotExist:
+            raise serializers.ValidationError({'personalDetails': {'city': 'Invalid city'}})
+        except Barangay.DoesNotExist:
+            raise serializers.ValidationError({'personalDetails': {'barangay': 'Invalid barangay'}})
+        except DegreeProgram.DoesNotExist:
+            raise serializers.ValidationError({'academicStatus': {'degreeProgram': 'Invalid degree program'}})
         
         # Create application
         application = MembershipApplication.objects.create(

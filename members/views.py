@@ -30,7 +30,7 @@ def list_members(request):
     paginated_queryset = paginator.paginate_queryset(queryset, request)
     serializer = MemberListSerializer(paginated_queryset, many=True)
     
-    return paginator.get_paginated_response({
+    return Response({
         'success': True,
         'data': {
             'members': serializer.data,
@@ -56,22 +56,46 @@ def get_member_detail(request, pk):
     }, status=status.HTTP_200_OK)
 
 
-@api_view(['PUT'])
+@api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def update_member(request, pk):
     """Update member information"""
     member = get_object_or_404(Member, pk=pk)
+    application = member.application
     
-    # You can add update logic here
-    # For now, just a placeholder
+    # Update fields from request
+    data = request.data
+    
+    if 'personalDetails' in data:
+        personal = data['personalDetails']
+        if 'email' in personal:
+            application.email = personal['email']
+            member.email = personal['email']
+        if 'mobileNumber' in personal:
+            application.mobile_number = personal['mobileNumber']
+        if 'currentAddress' in personal:
+            application.current_address = personal['currentAddress']
+    
+    if 'professional' in data:
+        professional = data['professional']
+        if 'currentEmployer' in professional:
+            application.current_employer = professional['currentEmployer']
+        if 'jobTitle' in professional:
+            application.job_title = professional['jobTitle']
+        if 'industry' in professional:
+            application.industry = professional['industry']
+    
+    application.save()
+    member.save()
     
     return Response({
         'success': True,
-        'message': 'Member updated successfully'
+        'message': 'Member updated successfully',
+        'data': MemberDetailSerializer(member).data
     }, status=status.HTTP_200_OK)
 
 
-@api_view(['DELETE'])
+@api_view(['DELETE', 'POST'])
 @permission_classes([IsAuthenticated])
 def revoke_membership(request, pk):
     """Revoke member's membership"""
@@ -81,7 +105,11 @@ def revoke_membership(request, pk):
     
     return Response({
         'success': True,
-        'message': 'Membership revoked successfully'
+        'message': 'Membership revoked successfully',
+        'data': {
+            'memberId': member.id,
+            'isActive': member.is_active
+        }
     }, status=status.HTTP_200_OK)
 
 
@@ -95,7 +123,7 @@ def export_members(request):
     response['Content-Disposition'] = 'attachment; filename="members.csv"'
     
     writer = csv.writer(response)
-    writer.writerow(['ID', 'Name', 'Email', 'Degree Program', 'Year Graduated', 'Member Since'])
+    writer.writerow(['ID', 'Name', 'Email', 'Degree Program', 'Year Graduated', 'Member Since', 'Active'])
     
     for member in members:
         writer.writerow([
@@ -104,7 +132,8 @@ def export_members(request):
             member.email,
             member.application.degree_program.name,
             member.application.year_graduated,
-            member.member_since.strftime('%Y-%m-%d')
+            member.member_since.strftime('%Y-%m-%d'),
+            'Yes' if member.is_active else 'No'
         ])
     
     return response

@@ -32,6 +32,19 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'limit'
     max_page_size = 100
 
+    def get_paginated_response(self, data):
+        # Return custom format matching the spec
+        return Response({
+            'success': True,
+            'data': {
+                'applicants': data.get('applicants') or data.get('members') or data,
+                'pagination': {
+                    'currentPage': self.page.number,
+                    'totalPages': self.page.paginator.num_pages,
+                    'totalItems': self.page.paginator.count
+                }
+            }
+        })
 
 # ============================================
 # REGISTRATION ENDPOINTS
@@ -111,7 +124,8 @@ def list_pending_alumni_verification(request):
     paginated_queryset = paginator.paginate_queryset(queryset, request)
     serializer = MembershipApplicationListSerializer(paginated_queryset, many=True)
     
-    return paginator.get_paginated_response({
+    # Format to match spec
+    return Response({
         'success': True,
         'data': {
             'applicants': serializer.data,
