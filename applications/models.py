@@ -7,44 +7,6 @@ from django.core.validators import RegexValidator, EmailValidator
 # REFERENCE DATA MODELS 
 # ============================================
 
-class Province(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    
-    class Meta:
-        ordering = ['name']
-        db_table = 'provinces'
-    
-    def __str__(self):
-        return self.name
-
-
-class City(models.Model):
-    name = models.CharField(max_length=100)
-    province = models.ForeignKey(Province, on_delete=models.CASCADE, related_name='cities')
-    
-    class Meta:
-        ordering = ['name']
-        db_table = 'cities'
-        verbose_name_plural = 'Cities'
-        unique_together = ['name', 'province']  # Same city name can exist in different provinces
-    
-    def __str__(self):
-        return f"{self.name}, {self.province.name}"
-
-
-class Barangay(models.Model):
-    name = models.CharField(max_length=100)
-    city = models.ForeignKey(City, on_delete=models.CASCADE, related_name='barangays')
-    
-    class Meta:
-        ordering = ['name']
-        db_table = 'barangays'
-        unique_together = ['name', 'city']  # Same barangay name can exist in different cities
-    
-    def __str__(self):
-        return f"{self.name}, {self.city.name}"
-
-
 class DegreeProgram(models.Model):
     name = models.CharField(max_length=200, unique=True)
     college = models.CharField(max_length=200)
@@ -75,6 +37,7 @@ class MembershipApplication(models.Model):
         ('pending_payment_verification', 'Pending Payment Verification'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
+        ('revoked', 'Revoked'),
     ]
     
     PAYMENT_METHOD_CHOICES = [
@@ -103,11 +66,11 @@ class MembershipApplication(models.Model):
         validators=[RegexValidator(regex=r'^(09|\+639)\d{9}$', message='Invalid PH mobile number')]
     )
     
-    # Address (now using names directly)
+    # Address (stored as text - frontend uses external API for lookups)
     current_address = models.CharField(max_length=255)
-    province = models.ForeignKey(Province, on_delete=models.PROTECT)
-    city = models.ForeignKey(City, on_delete=models.PROTECT)
-    barangay = models.ForeignKey(Barangay, on_delete=models.PROTECT)
+    province = models.CharField(max_length=100)
+    city = models.CharField(max_length=100)
+    barangay = models.CharField(max_length=100)
     
     # ===== ACADEMIC STATUS =====
     degree_program = models.ForeignKey(DegreeProgram, on_delete=models.PROTECT)
@@ -200,6 +163,8 @@ class VerificationHistory(models.Model):
         ('alumni_verified', 'Alumni Verified'),
         ('payment_confirmed', 'Payment Confirmed'),
         ('rejected', 'Application Rejected'),
+        ('membership_revoked', 'Membership Revoked'),
+        ('membership_reinstated', 'Membership Reinstated'),
     ]
     
     application = models.ForeignKey(

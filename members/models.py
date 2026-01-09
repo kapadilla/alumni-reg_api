@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from applications.models import MembershipApplication
 
 
@@ -14,6 +15,27 @@ class Member(models.Model):
     # For quick access (denormalized from application)
     full_name = models.CharField(max_length=200)
     email = models.EmailField()
+    
+    # Revocation tracking
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='member_revocations'
+    )
+    revocation_reason = models.TextField(blank=True)
+    
+    # Reinstatement tracking
+    reinstated_at = models.DateTimeField(null=True, blank=True)
+    reinstated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='member_reinstatements'
+    )
     
     class Meta:
         ordering = ['-member_since']

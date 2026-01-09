@@ -97,10 +97,23 @@ class AdminUpdateSerializer(serializers.ModelSerializer):
 class AdminListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'is_active', 'date_joined']
+        fields = ['id', 'email', 'first_name', 'last_name', 'is_active', 'date_joined', 'last_login']
 
 
 class AdminDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'first_name', 'last_name', 'is_active', 'date_joined', 'last_login']
+
+
+class AdminActivityLogSerializer(serializers.Serializer):
+    """Serializer for admin activity logs"""
+    id = serializers.IntegerField()
+    action = serializers.CharField()
+    actionDisplay = serializers.CharField(source='get_action_display')
+    timestamp = serializers.DateTimeField()
+    targetType = serializers.CharField(source='target_type', allow_null=True)
+    targetId = serializers.IntegerField(source='target_id', allow_null=True)
+    targetName = serializers.CharField(source='target_name', allow_blank=True)
+    notes = serializers.CharField(allow_blank=True)
+    ipAddress = serializers.IPAddressField(source='ip_address', allow_null=True)

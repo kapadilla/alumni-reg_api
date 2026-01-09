@@ -13,11 +13,12 @@ alumni-reg_api/
 ├── applications/
 │   ├── management/
 │   │   └── commands/
-│   │       └── seed_data.py  # Seed reference data
+│   │       ├── seed_data.py      # Seed reference data (degree programs)
+│   │       └── seed_mock_data.py # Generate mock test data
 │   ├── migrations/
 │   ├── __init__.py
 │   ├── admin.py             # Admin panel configuration
-│   ├── models.py            # Main models (Application, Province, etc.)
+│   ├── models.py            # Main models (Application, etc.)
 │   ├── serializers.py       # API serializers
 │   ├── views.py             # API views
 │   ├── urls.py              # Public registration endpoints
@@ -144,7 +145,11 @@ python manage.py migrate
 
 ### 3. Seed Reference Data
 ```bash
+# Seed degree programs
 python manage.py seed_data
+
+# (Optional) Generate mock test data for development
+python manage.py seed_mock_data
 ```
 
 ### 4. Create Superuser (Admin Account)
@@ -179,7 +184,7 @@ Login with your superuser credentials.
 
 ### Base URL
 ```
-http://localhost:8000/api
+http://localhost:8000/api/v1
 ```
 
 ### Authentication
@@ -200,11 +205,10 @@ Authorization: Bearer YOUR_TOKEN_HERE
 - `POST /submit/` - Submit new registration (public)
 - `GET /check-email/` - Check email availability (public)
 
-#### 3. **Reference Data** (`/api/registration/reference/`)
-- `GET /provinces/` - List all provinces
-- `GET /cities/?province=<name>` - List cities by province
-- `GET /barangays/?city=<name>` - List barangays by city
+#### 3. **Reference Data** (`/api/v1/registration/reference/`)
 - `GET /degree-programs/` - List all degree programs
+
+> **Note:** Address lookups (provinces, cities, barangays) have been moved to an external API.
 
 #### 4. **Alumni Verification** (`/api/verification/alumni/`) 🔒
 - `GET /` - List pending alumni verifications
@@ -262,7 +266,7 @@ Authorization: Bearer YOUR_TOKEN_HERE
 
 **Request:**
 ```bash
-curl -X POST http://localhost:8000/api/registration/submit/ \
+curl -X POST http://localhost:8000/api/v1/registration/submit/ \
   -H "Content-Type: application/json" \
   -d '{
     "personalDetails": {

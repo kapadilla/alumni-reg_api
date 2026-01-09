@@ -8,4 +8,6 @@ urlpatterns = [
     # Admin Management
     path('admins/', views.admin_list_create, name='admin-list-create'),
     path('admins/<int:pk>/', views.admin_detail, name='admin-detail'),
+    path('admins/<int:pk>/reactivate/', views.reactivate_admin, name='admin-reactivate'),
+    path('admins/<int:pk>/activity/', views.admin_activity_log, name='admin-activity-log'),
 ]

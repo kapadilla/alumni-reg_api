@@ -1,30 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    MembershipApplication, Province, City, Barangay,
-    DegreeProgram, VerificationHistory
+    MembershipApplication, DegreeProgram, VerificationHistory
 )
-
-
-class ProvinceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Province
-        fields = ['id', 'name']
-
-
-class CitySerializer(serializers.ModelSerializer):
-    provinceName = serializers.CharField(source='province.name', read_only=True)
-    
-    class Meta:
-        model = City
-        fields = ['id', 'name', 'provinceName']
-
-
-class BarangaySerializer(serializers.ModelSerializer):
-    cityName = serializers.CharField(source='city.name', read_only=True)
-    
-    class Meta:
-        model = Barangay
-        fields = ['id', 'name', 'cityName']
 
 
 class DegreeProgramSerializer(serializers.ModelSerializer):
@@ -46,7 +23,7 @@ class VerificationHistorySerializer(serializers.ModelSerializer):
 
 class MembershipApplicationListSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
-    degree = serializers.CharField(source='degree_program.name')
+    degreeProgram = serializers.CharField(source='degree_program.name')
     yearGraduated = serializers.CharField(source='year_graduated')
     studentNumber = serializers.CharField(source='student_number')
     dateApplied = serializers.DateTimeField(source='date_applied')
@@ -54,7 +31,7 @@ class MembershipApplicationListSerializer(serializers.ModelSerializer):
     class Meta:
         model = MembershipApplication
         fields = [
-            'id', 'name', 'email', 'degree', 'yearGraduated',
+            'id', 'name', 'email', 'degreeProgram', 'yearGraduated',
             'studentNumber', 'status', 'dateApplied'
         ]
     
@@ -63,9 +40,6 @@ class MembershipApplicationListSerializer(serializers.ModelSerializer):
 
 
 class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
-    provinceName = serializers.CharField(source='province.name', read_only=True)
-    cityName = serializers.CharField(source='city.name', read_only=True)
-    barangayName = serializers.CharField(source='barangay.name', read_only=True)
     degreeProgramName = serializers.CharField(source='degree_program.name', read_only=True)
     
     personalDetails = serializers.SerializerMethodField()
@@ -86,7 +60,7 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'status', 'dateApplied',
             'personalDetails', 'academicStatus', 'professional', 'membership',
-            'provinceName', 'cityName', 'barangayName', 'degreeProgramName',
+            'degreeProgramName',
             'alumniVerifiedAt', 'approvedAt', 'rejectedAt',
             'rejectionStage', 'rejectionReason', 'adminNotes', 'history'
         ]
@@ -104,9 +78,9 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
             'email': obj.email,
             'mobileNumber': obj.mobile_number,
             'currentAddress': obj.current_address,
-            'province': obj.province.name,
-            'city': obj.city.name,
-            'barangay': obj.barangay.name,
+            'province': obj.province,
+            'city': obj.city,
+            'barangay': obj.barangay,
         }
     
     def get_academicStatus(self, obj):
@@ -229,17 +203,7 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
         membership = validated_data['membership']
         
         try:
-            # Get related objects by name
-            province = Province.objects.get(name=personal['province'])
-            city = City.objects.get(name=personal['city'], province=province)
-            barangay = Barangay.objects.get(name=personal['barangay'], city=city)
             degree_program = DegreeProgram.objects.get(name=academic['degreeProgram'])
-        except Province.DoesNotExist:
-            raise serializers.ValidationError({'personalDetails': {'province': 'Invalid province'}})
-        except City.DoesNotExist:
-            raise serializers.ValidationError({'personalDetails': {'city': 'Invalid city'}})
-        except Barangay.DoesNotExist:
-            raise serializers.ValidationError({'personalDetails': {'barangay': 'Invalid barangay'}})
         except DegreeProgram.DoesNotExist:
             raise serializers.ValidationError({'academicStatus': {'degreeProgram': 'Invalid degree program'}})
         
@@ -255,9 +219,9 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             email=personal['email'],
             mobile_number=personal['mobileNumber'],
             current_address=personal['currentAddress'],
-            province=province,
-            city=city,
-            barangay=barangay,
+            province=personal['province'],
+            city=personal['city'],
+            barangay=personal['barangay'],
             
             # Academic status
             degree_program=degree_program,

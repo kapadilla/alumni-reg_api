@@ -2,7 +2,8 @@ from rest_framework import status, generics
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.filters import OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q, Count
@@ -10,8 +11,7 @@ from django.http import HttpResponse
 import csv
 
 from .models import (
-    MembershipApplication, Province, City, Barangay,
-    DegreeProgram, VerificationHistory
+    MembershipApplication, DegreeProgram, VerificationHistory
 )
 from members.models import Member
 from .serializers import (
@@ -20,31 +20,11 @@ from .serializers import (
     MembershipApplicationCreateSerializer,
     VerifyAlumniSerializer,
     RejectApplicationSerializer,
-    ProvinceSerializer,
-    CitySerializer,
-    BarangaySerializer,
     DegreeProgramSerializer,
 )
+from .pagination import ApplicantPagination
+from .filters import MembershipApplicationFilter, RejectedApplicationFilter
 
-
-class StandardResultsSetPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = 'limit'
-    max_page_size = 100
-
-    def get_paginated_response(self, data):
-        # Return custom format matching the spec
-        return Response({
-            'success': True,
-            'data': {
-                'applicants': data.get('applicants') or data.get('members') or data,
-                'pagination': {
-                    'currentPage': self.page.number,
-                    'totalPages': self.page.paginator.num_pages,
-                    'totalItems': self.page.paginator.count
-                }
-            }
-        })
 
 # ============================================
 # REGISTRATION ENDPOINTS
@@ -106,36 +86,40 @@ def check_email_availability(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_pending_alumni_verification(request):
-    """List all applications pending alumni verification"""
-    search = request.GET.get('search', '')
+    """List all applications pending alumni verification
     
+    Query Parameters:
+    - search: Search by name or email
+    - ordering: Sort by field (prefix - for descending). Options: date_applied, first_name, last_name, email
+    - date_from: Filter from date (YYYY-MM-DD)
+    - date_to: Filter to date (YYYY-MM-DD)
+    - degree_program: Filter by degree program
+    - year_graduated: Filter by graduation year
+    - page: Page number
+    - limit: Items per page (default 20, max 100)
+    """
     queryset = MembershipApplication.objects.filter(
         status='pending_alumni_verification'
     )
     
-    if search:
-        queryset = queryset.filter(
-            Q(first_name__icontains=search) |
-            Q(last_name__icontains=search) |
-            Q(email__icontains=search)
-        )
+    # Apply filters
+    filterset = MembershipApplicationFilter(request.GET, queryset=queryset)
+    queryset = filterset.qs
     
-    paginator = StandardResultsSetPagination()
+    # Apply ordering
+    ordering = request.GET.get('ordering', '-date_applied')
+    allowed_ordering = ['date_applied', '-date_applied', 'first_name', '-first_name', 
+                        'last_name', '-last_name', 'email', '-email']
+    if ordering in allowed_ordering:
+        queryset = queryset.order_by(ordering)
+    else:
+        queryset = queryset.order_by('-date_applied')
+    
+    paginator = ApplicantPagination()
     paginated_queryset = paginator.paginate_queryset(queryset, request)
     serializer = MembershipApplicationListSerializer(paginated_queryset, many=True)
     
-    # Format to match spec
-    return Response({
-        'success': True,
-        'data': {
-            'applicants': serializer.data,
-            'pagination': {
-                'currentPage': paginator.page.number,
-                'totalPages': paginator.page.paginator.num_pages,
-                'totalItems': paginator.page.paginator.count
-            }
-        }
-    })
+    return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(['GET'])
@@ -160,6 +144,8 @@ def get_alumni_verification_detail(request, pk):
 @permission_classes([IsAuthenticated])
 def verify_alumni(request, pk):
     """Verify applicant as UP Cebu alumni"""
+    from accounts.models import AdminActivityLog
+    
     application = get_object_or_404(
         MembershipApplication,
         pk=pk,
@@ -187,6 +173,16 @@ def verify_alumni(request, pk):
             notes=serializer.validated_data.get('notes', '')
         )
         
+        # Log admin activity
+        AdminActivityLog.objects.create(
+            admin=request.user,
+            action='verify_alumni',
+            target_type='application',
+            target_id=application.id,
+            target_name=application.full_name,
+            notes=serializer.validated_data.get('notes', '')
+        )
+        
         return Response({
             'success': True,
             'message': 'Applicant verified as alumni',
@@ -209,6 +205,8 @@ def verify_alumni(request, pk):
 @permission_classes([IsAuthenticated])
 def reject_alumni_verification(request, pk):
     """Reject application during alumni verification"""
+    from accounts.models import AdminActivityLog
+    
     application = get_object_or_404(
         MembershipApplication,
         pk=pk,
@@ -232,6 +230,16 @@ def reject_alumni_verification(request, pk):
             action='rejected',
             performed_by=request.user,
             notes=f"Rejected: {serializer.validated_data['reason']}"
+        )
+        
+        # Log admin activity
+        AdminActivityLog.objects.create(
+            admin=request.user,
+            action='reject_alumni',
+            target_type='application',
+            target_id=application.id,
+            target_name=application.full_name,
+            notes=serializer.validated_data['reason']
         )
         
         return Response({
@@ -288,21 +296,36 @@ def export_alumni_verification(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_pending_payment_verification(request):
-    """List all applications pending payment verification"""
-    search = request.GET.get('search', '')
+    """List all applications pending payment verification
     
+    Query Parameters:
+    - search: Search by name or email
+    - ordering: Sort by field (prefix - for descending). Options: alumni_verified_at, first_name, last_name, email
+    - date_from: Filter from date (YYYY-MM-DD) on alumni_verified_at
+    - date_to: Filter to date (YYYY-MM-DD) on alumni_verified_at
+    - degree_program: Filter by degree program
+    - year_graduated: Filter by graduation year
+    - page: Page number
+    - limit: Items per page (default 20, max 100)
+    """
     queryset = MembershipApplication.objects.filter(
         status='pending_payment_verification'
     )
     
-    if search:
-        queryset = queryset.filter(
-            Q(first_name__icontains=search) |
-            Q(last_name__icontains=search) |
-            Q(email__icontains=search)
-        )
+    # Apply filters
+    filterset = MembershipApplicationFilter(request.GET, queryset=queryset)
+    queryset = filterset.qs
     
-    paginator = StandardResultsSetPagination()
+    # Apply ordering
+    ordering = request.GET.get('ordering', '-alumni_verified_at')
+    allowed_ordering = ['alumni_verified_at', '-alumni_verified_at', 'first_name', '-first_name', 
+                        'last_name', '-last_name', 'email', '-email']
+    if ordering in allowed_ordering:
+        queryset = queryset.order_by(ordering)
+    else:
+        queryset = queryset.order_by('-alumni_verified_at')
+    
+    paginator = ApplicantPagination()
     paginated_queryset = paginator.paginate_queryset(queryset, request)
     
     # Custom serialization for payment verification view
@@ -313,21 +336,11 @@ def list_pending_payment_verification(request):
             'name': app.full_name,
             'email': app.email,
             'paymentMethod': app.payment_method,
-            'amount': 5000,  # You can make this dynamic
+            'amount': 5000,
             'alumniVerifiedDate': app.alumni_verified_at.strftime('%Y-%m-%d') if app.alumni_verified_at else None
         })
     
-    return paginator.get_paginated_response({
-        'success': True,
-        'data': {
-            'applicants': data,
-            'pagination': {
-                'currentPage': paginator.page.number,
-                'totalPages': paginator.page.paginator.num_pages,
-                'totalItems': paginator.page.paginator.count
-            }
-        }
-    })
+    return paginator.get_paginated_response(data)
 
 
 @api_view(['GET'])
@@ -354,6 +367,8 @@ def get_payment_verification_detail(request, pk):
 @permission_classes([IsAuthenticated])
 def confirm_payment(request, pk):
     """Confirm payment and approve member"""
+    from accounts.models import AdminActivityLog
+    
     application = get_object_or_404(
         MembershipApplication,
         pk=pk,
@@ -386,6 +401,16 @@ def confirm_payment(request, pk):
             notes=serializer.validated_data.get('notes', '')
         )
         
+        # Log admin activity
+        AdminActivityLog.objects.create(
+            admin=request.user,
+            action='approve_member',
+            target_type='member',
+            target_id=member.id,
+            target_name=application.full_name,
+            notes=serializer.validated_data.get('notes', '')
+        )
+        
         return Response({
             'success': True,
             'message': 'Payment confirmed. Member approved.',
@@ -409,6 +434,8 @@ def confirm_payment(request, pk):
 @permission_classes([IsAuthenticated])
 def reject_payment_verification(request, pk):
     """Reject application during payment verification"""
+    from accounts.models import AdminActivityLog
+    
     application = get_object_or_404(
         MembershipApplication,
         pk=pk,
@@ -432,6 +459,16 @@ def reject_payment_verification(request, pk):
             action='rejected',
             performed_by=request.user,
             notes=f"Rejected: {serializer.validated_data['reason']}"
+        )
+        
+        # Log admin activity
+        AdminActivityLog.objects.create(
+            admin=request.user,
+            action='reject_payment',
+            target_type='application',
+            target_id=application.id,
+            target_name=application.full_name,
+            notes=serializer.validated_data['reason']
         )
         
         return Response({
@@ -486,23 +523,37 @@ def export_payment_verification(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_rejected_applicants(request):
-    """List all rejected applicants"""
-    search = request.GET.get('search', '')
-    rejection_stage = request.GET.get('rejectionStage', '')
+    """List all rejected applicants
     
+    Query Parameters:
+    - search: Search by name or email
+    - rejection_stage: Filter by rejection stage (alumni_verification, payment_verification)
+    - ordering: Sort by field (prefix - for descending). Options: rejected_at, first_name, last_name, email
+    - date_from: Filter from date (YYYY-MM-DD) on date_applied
+    - date_to: Filter to date (YYYY-MM-DD) on date_applied
+    - rejected_from: Filter from date (YYYY-MM-DD) on rejected_at
+    - rejected_to: Filter to date (YYYY-MM-DD) on rejected_at
+    - degree_program: Filter by degree program
+    - year_graduated: Filter by graduation year
+    - page: Page number
+    - limit: Items per page (default 20, max 100)
+    """
     queryset = MembershipApplication.objects.filter(status='rejected')
     
-    if search:
-        queryset = queryset.filter(
-            Q(first_name__icontains=search) |
-            Q(last_name__icontains=search) |
-            Q(email__icontains=search)
-        )
+    # Apply filters (RejectedApplicationFilter includes rejection_stage)
+    filterset = RejectedApplicationFilter(request.GET, queryset=queryset)
+    queryset = filterset.qs
     
-    if rejection_stage:
-        queryset = queryset.filter(rejection_stage=rejection_stage)
+    # Apply ordering
+    ordering = request.GET.get('ordering', '-rejected_at')
+    allowed_ordering = ['rejected_at', '-rejected_at', 'first_name', '-first_name', 
+                        'last_name', '-last_name', 'email', '-email']
+    if ordering in allowed_ordering:
+        queryset = queryset.order_by(ordering)
+    else:
+        queryset = queryset.order_by('-rejected_at')
     
-    paginator = StandardResultsSetPagination()
+    paginator = ApplicantPagination()
     paginated_queryset = paginator.paginate_queryset(queryset, request)
     
     data = []
@@ -516,17 +567,7 @@ def list_rejected_applicants(request):
             'reason': app.rejection_reason
         })
     
-    return paginator.get_paginated_response({
-        'success': True,
-        'data': {
-            'applicants': data,
-            'pagination': {
-                'currentPage': paginator.page.number,
-                'totalPages': paginator.page.paginator.num_pages,
-                'totalItems': paginator.page.paginator.count
-            }
-        }
-    })
+    return paginator.get_paginated_response(data)
 
 
 @api_view(['GET'])
@@ -606,31 +647,91 @@ def dashboard_stats(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_activity(request):
-    """Get recent activity"""
-    limit = int(request.GET.get('limit', 5))
+    """Get recent activity from all sources
     
-    # Get recent applications
-    recent_applications = MembershipApplication.objects.all().order_by('-date_applied')[:limit]
+    Combines:
+    - VerificationHistory (submissions, approvals, rejections, revocations, reinstatements)
+    - AdminActivityLog (admin login, logout, deactivation, reactivation)
+    """
+    from accounts.models import AdminActivityLog
+    from itertools import chain
+    from operator import attrgetter
+    
+    limit = int(request.GET.get('limit', 10))
+    
+    # Get recent verification history
+    verification_activities = VerificationHistory.objects.select_related(
+        'application', 'performed_by'
+    ).all()[:limit * 2]  # Get extra to ensure we have enough after combining
+    
+    # Get recent admin activity logs
+    admin_activities = AdminActivityLog.objects.select_related('admin').all()[:limit * 2]
+    
+    # Convert to unified format
     activities = []
-    for app in recent_applications:
-        status_display = {
-            'pending_alumni_verification': ('Pending', 'Alumni Verification'),
-            'pending_payment_verification': ('Verified', 'Payment Verification'),
-            'approved': ('Approved', 'Member'),
-            'rejected': ('Rejected', app.get_rejection_stage_display() if app.rejection_stage else 'Unknown')
-        }
     
-        status_info = status_display.get(app.status, ('Unknown', 'Unknown'))
+    # Add verification history activities
+    for vh in verification_activities:
+        action_map = {
+            'submitted': 'Application Submitted',
+            'alumni_verified': 'Alumni Verified',
+            'payment_confirmed': 'Member Approved',
+            'rejected': 'Application Rejected',
+            'membership_revoked': 'Membership Revoked',
+            'membership_reinstated': 'Membership Reinstated',
+        }
         
         activities.append({
-            'id': app.id,
-            'name': app.full_name,
-            'email': app.email,
-            'status': status_info[0],
-            'type': status_info[1],
-            'date': app.date_applied.strftime('%Y-%m-%d')
+            'id': f'vh-{vh.id}',
+            'type': action_map.get(vh.action, vh.get_action_display()),
+            'description': f"{vh.application.full_name}",
+            'performedBy': vh.performed_by.email if vh.performed_by else 'System',
+            'timestamp': vh.timestamp,
+            'notes': vh.notes
         })
-
+    
+    # Add admin activity log activities
+    for al in admin_activities:
+        # Skip login/logout and actions already shown via VerificationHistory
+        exclude_actions = [
+            'login', 'logout',
+            'verify_alumni', 'reject_alumni', 
+            'approve_member', 'reject_payment',
+            'revoke_member', 'reinstate_member'
+        ]
+        if al.action in exclude_actions:
+            continue
+            
+        action_map = {
+            'verify_alumni': 'Verified Alumni',
+            'reject_alumni': 'Rejected Alumni',
+            'approve_member': 'Approved Member',
+            'reject_payment': 'Rejected Payment',
+            'revoke_member': 'Revoked Membership',
+            'reinstate_member': 'Reinstated Membership',
+            'deactivate_admin': 'Deactivated Admin',
+            'reactivate_admin': 'Reactivated Admin',
+        }
+        
+        description = al.target_name if al.target_name else f"{al.get_target_type_display()} ID {al.target_id}"
+        
+        activities.append({
+            'id': f'al-{al.id}',
+            'type': action_map.get(al.action, al.get_action_display()),
+            'description': description,
+            'performedBy': al.admin.email,
+            'timestamp': al.timestamp,
+            'notes': al.notes
+        })
+    
+    # Sort by timestamp (most recent first) and limit
+    activities.sort(key=lambda x: x['timestamp'], reverse=True)
+    activities = activities[:limit]
+    
+    # Format timestamps
+    for activity in activities:
+        activity['timestamp'] = activity['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+    
     return Response({
         'success': True,
         'data': {
@@ -642,53 +743,6 @@ def dashboard_activity(request):
 # REFERENCE DATA ENDPOINTS
 # ============================================
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_provinces(request):
-    """List all provinces"""
-    provinces = Province.objects.all()
-    serializer = ProvinceSerializer(provinces, many=True)
-    return Response({
-        'success': True,
-        'data': serializer.data
-    }, status=status.HTTP_200_OK)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_cities(request):
-    """List cities by province"""
-    province_name = request.GET.get('province')
-    
-    if province_name:
-        cities = City.objects.filter(province__name=province_name)
-    else:
-        cities = City.objects.all()
-    
-    serializer = CitySerializer(cities, many=True)
-    return Response({
-        'success': True,
-        'data': serializer.data
-    }, status=status.HTTP_200_OK)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_barangays(request):
-    """List barangays by city"""
-    city_name = request.GET.get('city')
-    
-    if city_name:
-        barangays = Barangay.objects.filter(city__name=city_name)
-    else:
-        barangays = Barangay.objects.all()
-    
-    serializer = BarangaySerializer(barangays, many=True)
-    return Response({
-        'success': True,
-        'data': serializer.data
-    }, status=status.HTTP_200_OK)
-
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -699,4 +753,39 @@ def list_degree_programs(request):
     return Response({
         'success': True,
         'data': serializer.data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def filter_options(request):
+    """Get filter options for dropdowns
+    
+    Returns available degree programs, graduation years, and rejection stages.
+    """
+    # Get distinct degree programs
+    degree_programs = list(
+        DegreeProgram.objects.filter(is_active=True)
+        .values_list('name', flat=True)
+        .distinct()
+        .order_by('name')
+    )
+    
+    # Get distinct graduation years
+    years = list(
+        MembershipApplication.objects.values_list('year_graduated', flat=True)
+        .distinct()
+        .order_by('-year_graduated')
+    )
+    
+    return Response({
+        'success': True,
+        'data': {
+            'degreePrograms': degree_programs,
+            'years': [y for y in years if y],
+            'rejectionStages': [
+                {'value': 'alumni_verification', 'label': 'Alumni Verification'},
+                {'value': 'payment_verification', 'label': 'Payment Verification'},
+            ]
+        }
     }, status=status.HTTP_200_OK)
