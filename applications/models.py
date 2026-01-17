@@ -84,8 +84,34 @@ class MembershipApplication(models.Model):
     job_title = models.CharField(max_length=100, blank=True, null=True)
     industry = models.CharField(max_length=100, blank=True, null=True)
     
-    # ===== MEMBERSHIP =====
+    # ===== MEMBERSHIP & PAYMENT =====
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
+    data_privacy_consent = models.BooleanField(default=False)
+    
+    # GCash Payment Details
+    gcash_reference_number = models.CharField(max_length=100, blank=True, null=True)
+    gcash_proof_of_payment = models.FileField(upload_to='payment_proofs/gcash/', blank=True, null=True)
+    
+    # Bank Transfer Payment Details
+    bank_name = models.CharField(max_length=100, blank=True, null=True)
+    bank_account_number = models.CharField(max_length=50, blank=True, null=True)
+    bank_reference_number = models.CharField(max_length=100, blank=True, null=True)
+    bank_sender_name = models.CharField(max_length=100, blank=True, null=True)
+    bank_proof_of_payment = models.FileField(upload_to='payment_proofs/bank/', blank=True, null=True)
+    
+    # Cash Payment Details
+    cash_payment_date = models.DateField(blank=True, null=True)
+    cash_received_by = models.CharField(max_length=100, blank=True, null=True)
+    
+    # ===== MENTORSHIP PROGRAM =====
+    join_mentorship_program = models.BooleanField(default=False)
+    mentorship_areas = models.JSONField(default=list, blank=True)  # List of mentorship areas
+    mentorship_areas_other = models.CharField(max_length=255, blank=True, null=True)
+    mentorship_availability = models.CharField(max_length=100, blank=True, null=True)
+    mentorship_format = models.CharField(max_length=100, blank=True, null=True)
+    mentorship_industry_tracks = models.JSONField(default=list, blank=True)  # List of industry tracks
+    mentorship_industry_tracks_other = models.CharField(max_length=255, blank=True, null=True)
+    years_of_experience = models.CharField(max_length=50, blank=True, null=True)
     
     # ===== STATUS TRACKING =====
     status = models.CharField(

@@ -138,10 +138,10 @@ curl -X GET http://localhost:8000/api/v1/auth/verify/ \
 
 ## 2. Registration Endpoints (Public)
 
-### `POST /registration/submit/`
-**Public** - Submit new alumni registration
+### `POST /applications/submit/`
+**Public** - Submit new alumni registration with payment details and optional mentorship enrollment
 
-#### Request Body Structure
+#### Request Body Structure (multipart/form-data)
 ```json
 {
   "personalDetails": {
@@ -154,9 +154,9 @@ curl -X GET http://localhost:8000/api/v1/auth/verify/ \
     "email": "string (not @up.edu.ph)",
     "mobileNumber": "string (09XXXXXXXXX or +639XXXXXXXXX)",
     "currentAddress": "string",
-    "province": "string",
-    "city": "string",
-    "barangay": "string"
+    "province": "string (state/province code)",
+    "city": "string (city/municipality code)",
+    "barangay": "string (barangay code)"
   },
   "academicStatus": {
     "degreeProgram": "string",
@@ -166,11 +166,31 @@ curl -X GET http://localhost:8000/api/v1/auth/verify/ \
   "professional": {
     "currentEmployer": "string (optional)",
     "jobTitle": "string (optional)",
-    "industry": "string (optional)"
+    "industry": "string (optional)",
+    "yearsOfExperience": "string (optional)"
   },
   "membership": {
-    "paymentMethod": "string (gcash, bank, cash)"
-  }
+    "paymentMethod": "string (gcash, bank, cash)",
+    "dataPrivacyConsent": "boolean",
+    "gcashReferenceNumber": "string (required if paymentMethod=gcash)",
+    "bankName": "string (required if paymentMethod=bank)",
+    "bankAccountNumber": "string (required if paymentMethod=bank)",
+    "bankReferenceNumber": "string (required if paymentMethod=bank)",
+    "bankSenderName": "string (required if paymentMethod=bank)",
+    "cashPaymentDate": "YYYY-MM-DD (required if paymentMethod=cash)",
+    "cashReceivedBy": "string (required if paymentMethod=cash)"
+  },
+  "mentorship": {
+    "joinMentorshipProgram": "boolean",
+    "mentorshipAreas": ["string array - mentorship areas of interest"],
+    "mentorshipAreasOther": "string (if other mentorship areas)",
+    "mentorshipAvailability": "string (availability for mentorship)",
+    "mentorshipFormat": "string (preferred format: online, in-person, hybrid)",
+    "mentorshipIndustryTracks": ["string array - industry tracks"],
+    "mentorshipIndustryTracksOther": "string (if other industry tracks)"
+  },
+  "gcashProofOfPayment": "file (required if paymentMethod=gcash)",
+  "bankProofOfPayment": "file (required if paymentMethod=bank)"
 }
 ```
 
@@ -187,48 +207,44 @@ curl -X GET http://localhost:8000/api/v1/auth/verify/ \
 | personalDetails | email | email | ✅ | Must not end with @up.edu.ph, must be unique |
 | personalDetails | mobileNumber | string | ✅ | Philippine format: 09XXXXXXXXX or +639XXXXXXXXX |
 | personalDetails | currentAddress | string | ✅ | - |
-| personalDetails | province | string | ✅ | Free text (use external API for selection) |
-| personalDetails | city | string | ✅ | Free text (use external API for selection) |
-| personalDetails | barangay | string | ✅ | Free text (use external API for selection) |
+| personalDetails | province | string | ✅ | Province/state code (e.g., "160200000") |
+| personalDetails | city | string | ✅ | City/municipality code (e.g., "160206000") |
+| personalDetails | barangay | string | ✅ | Barangay code (e.g., "160206004") |
 | academicStatus | degreeProgram | string | ✅ | Must exist in database |
 | academicStatus | yearGraduated | string | ✅ | 4-digit year |
 | academicStatus | studentNumber | string | ❌ | - |
 | professional | currentEmployer | string | ❌ | - |
 | professional | jobTitle | string | ❌ | - |
 | professional | industry | string | ❌ | - |
+| professional | yearsOfExperience | string | ❌ | - |
 | membership | paymentMethod | string | ✅ | One of: gcash, bank, cash |
+| membership | dataPrivacyConsent | boolean | ✅ | Must be true |
+| membership | gcashReferenceNumber | string | ✅ (if gcash) | - |
+| membership | bankName | string | ✅ (if bank) | - |
+| membership | bankAccountNumber | string | ✅ (if bank) | - |
+| membership | bankReferenceNumber | string | ✅ (if bank) | - |
+| membership | bankSenderName | string | ✅ (if bank) | - |
+| membership | cashPaymentDate | date | ✅ (if cash) | Format: YYYY-MM-DD |
+| membership | cashReceivedBy | string | ✅ (if cash) | - |
+| mentorship | joinMentorshipProgram | boolean | ❌ | - |
+| mentorship | mentorshipAreas | array | ❌ | Array of strings |
+| mentorship | mentorshipAreasOther | string | ❌ | - |
+| mentorship | mentorshipAvailability | string | ❌ | - |
+| mentorship | mentorshipFormat | string | ❌ | - |
+| mentorship | mentorshipIndustryTracks | array | ❌ | Array of strings |
+| mentorship | mentorshipIndustryTracksOther | string | ❌ | - |
+| files | gcashProofOfPayment | file | ✅ (if gcash) | Image/PDF format |
+| files | bankProofOfPayment | file | ✅ (if bank) | Image/PDF format |
 
-#### Example Request
+#### Example Request (multipart/form-data)
 ```bash
-curl -X POST http://localhost:8000/api/v1/registration/submit/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "personalDetails": {
-      "title": "Mr",
-      "firstName": "Juan",
-      "lastName": "Dela Cruz",
-      "dateOfBirth": "1995-05-15",
-      "email": "juan@example.com",
-      "mobileNumber": "09171234567",
-      "currentAddress": "123 Main St",
-      "province": "Cebu",
-      "city": "Cebu City",
-      "barangay": "Lahug"
-    },
-    "academicStatus": {
-      "degreeProgram": "Bachelor of Science in Computer Science",
-      "yearGraduated": "2020",
-      "studentNumber": "2016-12345"
-    },
-    "professional": {
-      "currentEmployer": "Acme Corp",
-      "jobTitle": "Software Developer",
-      "industry": "Technology"
-    },
-    "membership": {
-      "paymentMethod": "gcash"
-    }
-  }'
+curl -X POST http://localhost:8000/api/v1/applications/submit/ \
+  -F "personalDetails={\"title\": \"Mr\", \"firstName\": \"Juan\", \"lastName\": \"Dela Cruz\", \"dateOfBirth\": \"1995-05-15\", \"email\": \"juan@example.com\", \"mobileNumber\": \"09171234567\", \"currentAddress\": \"123 Main St\", \"province\": \"160200000\", \"city\": \"160206000\", \"barangay\": \"160206004\"}" \
+  -F "academicStatus={\"degreeProgram\": \"BS Comsci\", \"yearGraduated\": \"2020\", \"studentNumber\": \"2016-12345\"}" \
+  -F "professional={\"currentEmployer\": \"Acme Corp\", \"jobTitle\": \"Software Developer\", \"industry\": \"Technology\", \"yearsOfExperience\": \"5\"}" \
+  -F "membership={\"paymentMethod\": \"gcash\", \"dataPrivacyConsent\": true, \"gcashReferenceNumber\": \"2025010612345\"}" \
+  -F "mentorship={\"joinMentorshipProgram\": true, \"mentorshipAreas\": [\"Career Development\", \"Technical Skills\"], \"mentorshipAvailability\": \"Weekends\", \"mentorshipFormat\": \"online\"}" \
+  -F "gcashProofOfPayment=@/path/to/proof.jpg"
 ```
 
 #### Example Response (Success - 201 Created)
@@ -244,10 +260,33 @@ curl -X POST http://localhost:8000/api/v1/registration/submit/ \
 }
 ```
 
-#### Example Response (Error - 400 Bad Request)
+#### Example Response (Error - 400 Bad Request - Missing Payment Proof)
 ```json
 {
   "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "gcashProofOfPayment": ["Proof of payment is required for GCash"]
+  }
+}
+```
+
+#### Example Response (Error - 400 Bad Request - Bank Transfer)
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "membership": {
+      "bankName": "bankName is required for bank transfer",
+      "bankAccountNumber": "bankAccountNumber is required for bank transfer",
+      "bankReferenceNumber": "bankReferenceNumber is required for bank transfer",
+      "bankSenderName": "bankSenderName is required for bank transfer"
+    },
+    "bankProofOfPayment": ["Proof of payment is required for bank transfer"]
+  }
+}
+```
   "message": "Validation failed",
   "errors": {
     "personalDetails": {

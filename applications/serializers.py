@@ -104,18 +104,23 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
 
 
 class MembershipApplicationCreateSerializer(serializers.Serializer):
-    personalDetails = serializers.DictField(required=False) 
-    academicStatus = serializers.DictField(required=False)
+    personalDetails = serializers.JSONField(required=False, allow_null=True)
+    academicStatus = serializers.JSONField(required=False, allow_null=True)
+    professional = serializers.JSONField(required=False, allow_null=True)
+    membership = serializers.JSONField(required=False, allow_null=True)
+    mentorship = serializers.JSONField(required=False, allow_null=True)
     
-    professional = serializers.DictField(required=False)
-    membership = serializers.DictField(required=False)
+    # File uploads
+    gcashProofOfPayment = serializers.FileField(required=False, allow_null=True)
+    bankProofOfPayment = serializers.FileField(required=False, allow_null=True)
     
     def validate(self, data):
-        # Handle both naming conventions (prefer camelCase)
-        personal = data.get('personalDetails') or data.get('personal_details')
-        academic = data.get('academicStatus') or data.get('academic_status')
-        professional = data.get('professional', {})
+        # Parse JSON strings from FormData (they come as strings, not dicts)
+        personal = data.get('personalDetails')
+        academic = data.get('academicStatus')
+        professional = data.get('professional') or {}
         membership = data.get('membership')
+        mentorship = data.get('mentorship') or {}
         
         if not personal:
             raise serializers.ValidationError({
@@ -184,16 +189,59 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
         
         # Validate payment method choice
         valid_payment_methods = ['gcash', 'bank', 'cash']
-        if membership['paymentMethod'] not in valid_payment_methods:
+        payment_method = membership['paymentMethod']
+        if payment_method not in valid_payment_methods:
             raise serializers.ValidationError({
                 'membership': {'paymentMethod': f'Must be one of: {", ".join(valid_payment_methods)}'}
+            })
+        
+        # Validate payment method specific fields
+        if payment_method == 'gcash':
+            if 'gcashReferenceNumber' not in membership:
+                raise serializers.ValidationError({
+                    'membership': {'gcashReferenceNumber': 'GCash reference number is required'}
+                })
+            if 'gcashProofOfPayment' not in data or data['gcashProofOfPayment'] is None:
+                raise serializers.ValidationError({
+                    'gcashProofOfPayment': 'Proof of payment is required for GCash'
+                })
+        
+        elif payment_method == 'bank':
+            required_bank_fields = ['bankName', 'bankAccountNumber', 'bankReferenceNumber', 'bankSenderName']
+            for field in required_bank_fields:
+                if field not in membership or not membership[field]:
+                    raise serializers.ValidationError({
+                        'membership': {field: f'{field} is required for bank transfer'}
+                    })
+            if 'bankProofOfPayment' not in data or data['bankProofOfPayment'] is None:
+                raise serializers.ValidationError({
+                    'bankProofOfPayment': 'Proof of payment is required for bank transfer'
+                })
+        
+        elif payment_method == 'cash':
+            required_cash_fields = ['cashPaymentDate', 'cashReceivedBy']
+            for field in required_cash_fields:
+                if field not in membership or not membership[field]:
+                    raise serializers.ValidationError({
+                        'membership': {field: f'{field} is required for cash payment'}
+                    })
+        
+        # Validate data privacy consent
+        if 'dataPrivacyConsent' not in membership or not membership['dataPrivacyConsent']:
+            raise serializers.ValidationError({
+                'membership': {'dataPrivacyConsent': 'You must consent to data privacy terms'}
             })
         
         return {
             'personal_details': personal,
             'academic_status': academic,
             'professional': professional,
-            'membership': membership
+            'membership': membership,
+            'mentorship': mentorship,
+            'files': {
+                'gcash_proof': data.get('gcashProofOfPayment'),
+                'bank_proof': data.get('bankProofOfPayment'),
+            }
         }
     
     def create(self, validated_data):
@@ -201,11 +249,19 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
         academic = validated_data['academic_status']
         professional = validated_data.get('professional', {})
         membership = validated_data['membership']
+        mentorship = validated_data.get('mentorship', {})
+        files = validated_data.get('files', {})
         
         try:
             degree_program = DegreeProgram.objects.get(name=academic['degreeProgram'])
         except DegreeProgram.DoesNotExist:
             raise serializers.ValidationError({'academicStatus': {'degreeProgram': 'Invalid degree program'}})
+        
+        payment_method = membership['paymentMethod']
+        
+        # Helper to convert empty strings to None
+        def empty_to_none(value):
+            return None if value == '' else value
         
         # Create application
         application = MembershipApplication.objects.create(
@@ -213,8 +269,8 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             title=personal['title'],
             first_name=personal['firstName'],
             last_name=personal['lastName'],
-            suffix=personal.get('suffix'),
-            maiden_name=personal.get('maidenName'),
+            suffix=empty_to_none(personal.get('suffix')),
+            maiden_name=empty_to_none(personal.get('maidenName')),
             date_of_birth=personal['dateOfBirth'],
             email=personal['email'],
             mobile_number=personal['mobileNumber'],
@@ -226,15 +282,39 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             # Academic status
             degree_program=degree_program,
             year_graduated=academic['yearGraduated'],
-            student_number=academic.get('studentNumber'),
+            student_number=empty_to_none(academic.get('studentNumber')),
             
             # Professional
-            current_employer=professional.get('currentEmployer'),
-            job_title=professional.get('jobTitle'),
-            industry=professional.get('industry'),
+            current_employer=empty_to_none(professional.get('currentEmployer')),
+            job_title=empty_to_none(professional.get('jobTitle')),
+            industry=empty_to_none(professional.get('industry')),
             
-            # Membership
-            payment_method=membership['paymentMethod'],
+            # Membership & Payment
+            payment_method=payment_method,
+            data_privacy_consent=membership.get('dataPrivacyConsent', False),
+            
+            # Payment method specific details
+            gcash_reference_number=empty_to_none(membership.get('gcashReferenceNumber')),
+            gcash_proof_of_payment=files.get('gcash_proof'),
+            
+            bank_name=empty_to_none(membership.get('bankName')),
+            bank_account_number=empty_to_none(membership.get('bankAccountNumber')),
+            bank_reference_number=empty_to_none(membership.get('bankReferenceNumber')),
+            bank_sender_name=empty_to_none(membership.get('bankSenderName')),
+            bank_proof_of_payment=files.get('bank_proof'),
+            
+            cash_payment_date=empty_to_none(membership.get('cashPaymentDate')),
+            cash_received_by=empty_to_none(membership.get('cashReceivedBy')),
+            
+            # Mentorship program
+            join_mentorship_program=mentorship.get('joinMentorshipProgram', False),
+            mentorship_areas=mentorship.get('mentorshipAreas', []),
+            mentorship_areas_other=empty_to_none(mentorship.get('mentorshipAreasOther')),
+            mentorship_availability=empty_to_none(mentorship.get('mentorshipAvailability')),
+            mentorship_format=empty_to_none(mentorship.get('mentorshipFormat')),
+            mentorship_industry_tracks=mentorship.get('mentorshipIndustryTracks', []),
+            mentorship_industry_tracks_other=empty_to_none(mentorship.get('mentorshipIndustryTracksOther')),
+            years_of_experience=empty_to_none(personal.get('yearsOfExperience')),
         )
         
         # Create history entry
