@@ -13,7 +13,7 @@ class MembershipApplicationAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Personal Information', {
-            'fields': ('title', 'first_name', 'last_name', 'suffix', 'maiden_name', 'date_of_birth')
+            'fields': ('first_name', 'middle_name', 'last_name', 'suffix', 'maiden_name', 'date_of_birth')
         }),
         ('Contact Information', {
             'fields': ('email', 'mobile_number', 'current_address', 'province', 'city', 'barangay')
@@ -28,7 +28,7 @@ class MembershipApplicationAdmin(admin.ModelAdmin):
             'fields': ('payment_method',)
         }),
         ('Status', {
-            'fields': ('status', 'date_applied', 'admin_notes')
+            'fields': ('status', 'date_applied')
         }),
         ('Verification Details', {
             'fields': (

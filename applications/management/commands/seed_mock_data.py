@@ -49,7 +49,6 @@ class Command(BaseCommand):
 
             payment_method = random.choice(['gcash', 'bank', 'cash'])
             app = MembershipApplication(
-                title=random.choice(['Mr', 'Ms', 'Mrs']),
                 first_name=f_name,
                 middle_name=random.choice(first_names) if random.random() > 0.3 else None,
                 last_name=l_name,
