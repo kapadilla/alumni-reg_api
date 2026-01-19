@@ -18,6 +18,15 @@
 - **Security**: Email validation and check-email endpoint now use generic error messages to prevent email enumeration attacks
 - **Campus Field**: `campus` is now a required field in `academicStatus` with default value "UP Cebu"
 
+**Form Settings Endpoints (NEW)**
+
+- Added `GET /admin/settings/form/` - Retrieve form settings (admin)
+- Added `PUT /admin/settings/form/` - Update form settings (admin)
+- Added `GET /public/form-settings/` - Retrieve public form settings (no auth required)
+- New `FormSettings` model with JSON fields for payment accounts (GCash, Bank, Cash)
+- New `FormSettingsHistory` model for tracking detailed changes
+- Added `form_settings_updated` action to `AdminActivityLog`
+
 **Member Detail Response Updates**
 
 - Added `mentorship` section to `GET /members/<id>/` response with all mentorship program fields
@@ -1919,7 +1928,352 @@ curl http://localhost:8000/api/v1/dashboard/filters/ \
 
 ---
 
-## 10. Frontend Filter Implementation Guide
+## 10. Form Settings Endpoints
+
+Endpoints for managing dynamic payment information and registration form settings. Admins can configure membership fees, payment accounts (GCash, Bank, Cash), and success page messages.
+
+### `GET /admin/settings/form/` 🔒
+
+**Protected** - Retrieve current form settings with metadata
+
+Returns the complete form settings including payment accounts, membership fee, success message, and last update information.
+
+#### Example Request
+
+```bash
+curl http://localhost:8000/api/v1/admin/settings/form/ \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Example Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "settings": {
+      "membershipFee": 1450.0,
+      "paymentSettings": {
+        "gcashAccounts": [
+          {
+            "name": "Juan Dela Cruz",
+            "number": "09171234567"
+          }
+        ],
+        "bankAccounts": [
+          {
+            "bankName": "BDO",
+            "accountName": "UP Alumni Association",
+            "accountNumber": "001234567890"
+          }
+        ],
+        "cashPayment": {
+          "address": "Lahug, Cebu City",
+          "building": "UP Cebu Main Building",
+          "office": "Room 101, Alumni Office",
+          "openDays": ["mon", "tue", "wed", "thu", "fri"],
+          "openHours": "8:00 AM - 5:00 PM"
+        }
+      },
+      "successMessage": "Welcome to the UP Alumni Association - Cebu Chapter!"
+    },
+    "lastUpdated": {
+      "at": "2026-01-19T14:30:00Z",
+      "by": {
+        "id": 1,
+        "name": "Admin Name",
+        "email": "admin@example.com"
+      }
+    }
+  }
+}
+```
+
+---
+
+### `PUT /admin/settings/form/` 🔒
+
+**Protected** - Update form settings
+
+Update membership fee, payment accounts, and success message. Changes are logged to both `AdminActivityLog` and `FormSettingsHistory`.
+
+> [!IMPORTANT]
+> This endpoint requires the **complete settings object** to be sent. Partial updates are not supported. Fetch the current settings first using `GET /admin/settings/form/`, modify the desired fields, then send the entire object back.
+
+#### Request Body
+
+| Field                                          | Type     | Required | Description                                                |
+| ---------------------------------------------- | -------- | -------- | ---------------------------------------------------------- |
+| `membershipFee`                                | decimal  | ✅       | Membership fee amount (min: 0)                             |
+| `paymentSettings`                              | object   | ✅       | Payment configuration object                               |
+| `paymentSettings.gcashAccounts`                | array    | ❌       | List of GCash accounts (default: `[]`)                     |
+| `paymentSettings.gcashAccounts[].name`         | string   | ✅       | Account holder name (max 255 chars)                        |
+| `paymentSettings.gcashAccounts[].number`       | string   | ✅       | GCash number (11 digits, starts with 09)                   |
+| `paymentSettings.bankAccounts`                 | array    | ❌       | List of bank accounts (default: `[]`)                      |
+| `paymentSettings.bankAccounts[].bankName`      | string   | ✅       | Bank name (max 255 chars)                                  |
+| `paymentSettings.bankAccounts[].accountName`   | string   | ✅       | Account holder name (max 255 chars)                        |
+| `paymentSettings.bankAccounts[].accountNumber` | string   | ✅       | Account number (max 255 chars)                             |
+| `paymentSettings.cashPayment`                  | object   | ❌       | Cash payment details (default: empty object)               |
+| `paymentSettings.cashPayment.address`          | string   | ❌       | Office address (max 255 chars)                             |
+| `paymentSettings.cashPayment.building`         | string   | ❌       | Building name (max 255 chars)                              |
+| `paymentSettings.cashPayment.office`           | string   | ❌       | Office location (max 255 chars)                            |
+| `paymentSettings.cashPayment.openDays`         | string[] | ❌       | Open days: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun` |
+| `paymentSettings.cashPayment.openHours`        | string   | ❌       | Office hours (max 100 chars)                               |
+| `successMessage`                               | string   | ❌       | Success page message (max 500 chars, default: `""`)        |
+
+#### Minimum Required Structure
+
+The minimum valid request body must include `membershipFee` and `paymentSettings`:
+
+```json
+{
+  "membershipFee": 1450.0,
+  "paymentSettings": {}
+}
+```
+
+#### Example Request (Adding GCash Account Only)
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/admin/settings/form/ \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "membershipFee": 1450.00,
+    "paymentSettings": {
+      "gcashAccounts": [
+        {
+          "name": "Juan Dela Cruz",
+          "number": "09171234567"
+        }
+      ]
+    }
+  }'
+```
+
+#### Example Request (Complete Structure)
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/admin/settings/form/ \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "membershipFee": 1450.00,
+    "paymentSettings": {
+      "gcashAccounts": [
+        {
+          "name": "Juan Dela Cruz",
+          "number": "09171234567"
+        }
+      ],
+      "bankAccounts": [
+        {
+          "bankName": "BDO",
+          "accountName": "UP Alumni Association",
+          "accountNumber": "001234567890"
+        }
+      ],
+      "cashPayment": {
+        "address": "Lahug, Cebu City",
+        "building": "UP Cebu Main Building",
+        "office": "Room 101, Alumni Office",
+        "openDays": ["mon", "tue", "wed", "thu", "fri"],
+        "openHours": "8:00 AM - 5:00 PM"
+      }
+    },
+    "successMessage": "Welcome to the UP Alumni Association - Cebu Chapter!"
+  }'
+```
+
+#### Example Response (Success)
+
+```json
+{
+  "success": true,
+  "message": "Form settings updated successfully",
+  "data": {
+    "settings": {
+      "membershipFee": 1450.0,
+      "paymentSettings": {
+        "gcashAccounts": [
+          {
+            "name": "Juan Dela Cruz",
+            "number": "09171234567"
+          }
+        ],
+        "bankAccounts": [
+          {
+            "bankName": "BDO",
+            "accountName": "UP Alumni Association",
+            "accountNumber": "001234567890"
+          }
+        ],
+        "cashPayment": {
+          "address": "Lahug, Cebu City",
+          "building": "UP Cebu Main Building",
+          "office": "Room 101, Alumni Office",
+          "openDays": ["mon", "tue", "wed", "thu", "fri"],
+          "openHours": "8:00 AM - 5:00 PM"
+        }
+      },
+      "successMessage": "Welcome to the UP Alumni Association - Cebu Chapter!"
+    },
+    "lastUpdated": {
+      "at": "2026-01-19T14:35:00Z",
+      "by": {
+        "id": 1,
+        "name": "Admin Name",
+        "email": "admin@example.com"
+      }
+    }
+  }
+}
+```
+
+#### Example Response (Validation Error)
+
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "membershipFee": ["Ensure this value is greater than or equal to 0."],
+    "paymentSettings": {
+      "gcashAccounts": [
+        {
+          "number": [
+            "Invalid GCash number format. Must be 11 digits starting with 09."
+          ]
+        }
+      ]
+    },
+    "successMessage": ["Ensure this field has no more than 500 characters."]
+  }
+}
+```
+
+---
+
+### `GET /public/form-settings/`
+
+**Public** - Retrieve form settings for registration form
+
+Returns only the information needed for the public registration form. Does NOT include admin details, modification history, or sensitive metadata.
+
+> [!NOTE]
+> This endpoint does not require authentication and is intended for use by the public registration form.
+
+#### Example Request
+
+```bash
+curl http://localhost:8000/api/v1/public/form-settings/
+```
+
+#### Example Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipFee": 1450.0,
+    "paymentMethods": {
+      "gcash": {
+        "accounts": [
+          {
+            "name": "Juan Dela Cruz",
+            "number": "09171234567"
+          }
+        ]
+      },
+      "bank": {
+        "accounts": [
+          {
+            "bankName": "BDO",
+            "accountName": "UP Alumni Association",
+            "accountNumber": "001234567890"
+          }
+        ]
+      },
+      "cash": {
+        "address": "Lahug, Cebu City",
+        "building": "UP Cebu Main Building",
+        "office": "Room 101, Alumni Office",
+        "openDays": ["mon", "tue", "wed", "thu", "fri"],
+        "openHours": "8:00 AM - 5:00 PM"
+      }
+    },
+    "successMessage": "Welcome to the UP Alumni Association - Cebu Chapter!"
+  }
+}
+```
+
+---
+
+### Form Settings Data Types Reference
+
+#### GCash Account Object
+
+| Field    | Type   | Required | Validation                              |
+| -------- | ------ | -------- | --------------------------------------- |
+| `name`   | string | ✅       | Max 255 characters                      |
+| `number` | string | ✅       | Exactly 11 digits, must start with `09` |
+
+**Number Format Regex:** `^09[0-9]{9}$`
+
+#### Bank Account Object
+
+| Field           | Type   | Required | Validation         |
+| --------------- | ------ | -------- | ------------------ |
+| `bankName`      | string | ✅       | Max 255 characters |
+| `accountName`   | string | ✅       | Max 255 characters |
+| `accountNumber` | string | ✅       | Max 255 characters |
+
+#### Cash Payment Object
+
+| Field       | Type     | Required | Validation                                                |
+| ----------- | -------- | -------- | --------------------------------------------------------- |
+| `address`   | string   | ❌       | Max 255 characters                                        |
+| `building`  | string   | ❌       | Max 255 characters                                        |
+| `office`    | string   | ❌       | Max 255 characters                                        |
+| `openDays`  | string[] | ❌       | Array of: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun` |
+| `openHours` | string   | ❌       | Max 100 characters (e.g., "8:00 AM - 5:00 PM")            |
+
+#### Open Days Reference
+
+| Value | Display Label |
+| ----- | ------------- |
+| `mon` | Monday        |
+| `tue` | Tuesday       |
+| `wed` | Wednesday     |
+| `thu` | Thursday      |
+| `fri` | Friday        |
+| `sat` | Saturday      |
+| `sun` | Sunday        |
+
+---
+
+### Activity Logging
+
+When form settings are updated via `PUT /admin/settings/form/`, the following are logged:
+
+1. **AdminActivityLog Entry:**
+   - `action`: `form_settings_updated`
+   - `actionDisplay`: `Updated Form Settings`
+   - `targetType`: `form_settings`
+   - `notes`: Human-readable summary of changes
+
+2. **FormSettingsHistory Entry:**
+   - Detailed JSON diff of what changed (from/to values)
+
+#### Example Activity Log Notes
+
+```
+Changed membership fee from Php 500.00 to Php 1,450.00. Added 2 GCash account(s). Modified cash payment details: openDays, openHours.
+```
+
+---
+
+## 11. Frontend Filter Implementation Guide
 
 This section provides guidance for implementing filters in the frontend application.
 
@@ -2021,6 +2375,9 @@ GET /api/v1/members/?province=Cebu
 
 | Date       | Change                                                                                                                                                            |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-01-19 | **Form Settings Endpoints**: Added `GET/PUT /admin/settings/form/` (admin) and `GET /public/form-settings/` (public) for dynamic payment configuration            |
+| 2026-01-19 | **New Models**: Added `FormSettings` (singleton) and `FormSettingsHistory` for settings management and audit trail                                                |
+| 2026-01-19 | **Activity Log**: Added `form_settings_updated` action and `form_settings` target type to `AdminActivityLog`                                                      |
 | 2026-01-09 | **Members Status Filter**: Added `status` query parameter to `/members/` endpoint to filter by `active`, `revoked`, or `all` (default)                            |
 | 2026-01-09 | **Enhanced Revoke Endpoint**: `POST /members/<id>/revoke/` now requires a `reason` field, updates application status to `revoked`, and logs to audit trail        |
 | 2026-01-09 | **New Reinstate Endpoint**: Added `POST /members/<id>/reinstate/` to reactivate revoked members with audit trail                                                  |

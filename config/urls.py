@@ -14,20 +14,26 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from form_settings.urls import admin_urlpatterns as form_settings_admin_urls
+from form_settings.urls import public_urlpatterns as form_settings_public_urls
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("admin/", admin.site.urls),
     # API v1 endpoints
-    path('api/v1/auth/', include('accounts.urls')),
-    path('api/v1/registration/', include('applications.urls')), 
-    path('api/v1/verification/', include('applications.verification_urls')), 
-    path('api/v1/rejected/', include('applications.rejected_urls')),  
-    path('api/v1/members/', include('members.urls')),
-    path('api/v1/dashboard/', include('applications.dashboard_urls')), 
+    path("api/v1/auth/", include("accounts.urls")),
+    path("api/v1/registration/", include("applications.urls")),
+    path("api/v1/verification/", include("applications.verification_urls")),
+    path("api/v1/rejected/", include("applications.rejected_urls")),
+    path("api/v1/members/", include("members.urls")),
+    path("api/v1/dashboard/", include("applications.dashboard_urls")),
+    # Form settings endpoints
+    path("api/v1/admin/settings/", include(form_settings_admin_urls)),
+    path("api/v1/public/", include(form_settings_public_urls)),
 ]
 
 # Serve media files in development
