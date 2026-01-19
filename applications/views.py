@@ -12,7 +12,7 @@ from django.http import HttpResponse
 import csv
 
 from .models import (
-    MembershipApplication, DegreeProgram, VerificationHistory
+    MembershipApplication, VerificationHistory
 )
 from members.models import Member
 from .serializers import (
@@ -21,7 +21,6 @@ from .serializers import (
     MembershipApplicationCreateSerializer,
     VerifyAlumniSerializer,
     RejectApplicationSerializer,
-    DegreeProgramSerializer,
 )
 from .pagination import ApplicantPagination
 from .filters import MembershipApplicationFilter, RejectedApplicationFilter
@@ -282,7 +281,7 @@ def export_alumni_verification(request):
             app.id,
             app.full_name,
             app.email,
-            app.degree_program.name,
+            app.degree_program,
             app.year_graduated,
             app.student_number or 'N/A',
             app.date_applied.strftime('%Y-%m-%d')
@@ -750,11 +749,14 @@ def dashboard_activity(request):
 @permission_classes([AllowAny])
 def list_degree_programs(request):
     """List all degree programs"""
-    programs = DegreeProgram.objects.filter(is_active=True)
-    serializer = DegreeProgramSerializer(programs, many=True)
+    programs = list(
+        MembershipApplication.objects.values_list('degree_program', flat=True)
+        .distinct()
+        .order_by('degree_program')
+    )
     return Response({
         'success': True,
-        'data': serializer.data
+        'data': programs
     }, status=status.HTTP_200_OK)
 
 
@@ -765,12 +767,17 @@ def filter_options(request):
     
     Returns available degree programs, graduation years, and rejection stages.
     """
-    # Get distinct degree programs
+    # Get distinct degree programs (from stored applications)
     degree_programs = list(
-        DegreeProgram.objects.filter(is_active=True)
-        .values_list('name', flat=True)
+        MembershipApplication.objects.values_list('degree_program', flat=True)
         .distinct()
-        .order_by('name')
+        .order_by('degree_program')
+    )
+    # Get distinct campuses
+    campuses = list(
+        MembershipApplication.objects.values_list('campus', flat=True)
+        .distinct()
+        .order_by('campus')
     )
     
     # Get distinct graduation years
@@ -784,6 +791,7 @@ def filter_options(request):
         'success': True,
         'data': {
             'degreePrograms': degree_programs,
+            'campuses': [c for c in campuses if c],
             'years': [y for y in years if y],
             'rejectionStages': [
                 {'value': 'alumni_verification', 'label': 'Alumni Verification'},

@@ -4,7 +4,7 @@ from applications.serializers import VerificationHistorySerializer
 
 
 class MemberListSerializer(serializers.ModelSerializer):
-    degreeProgram = serializers.CharField(source='application.degree_program.name')
+    degreeProgram = serializers.CharField(source='application.degree_program')
     yearGraduated = serializers.CharField(source='application.year_graduated')
     
     class Meta:
@@ -42,7 +42,8 @@ class MemberDetailSerializer(serializers.ModelSerializer):
     def get_academicStatus(self, obj):
         app = obj.application
         return {
-            'degreeProgram': app.degree_program.name if app.degree_program else None,
+            'degreeProgram': app.degree_program,
+            'campus': app.campus,
             'yearGraduated': app.year_graduated,
             'studentNumber': app.student_number,
         }

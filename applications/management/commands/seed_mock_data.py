@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from applications.models import (
-    MembershipApplication, DegreeProgram, VerificationHistory
+    MembershipApplication, VerificationHistory
 )
 from members.models import Member
 
@@ -14,11 +14,6 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write('Starting mock data generation...')
         
-        # Ensure reference data exists
-        if not DegreeProgram.objects.exists():
-            self.stdout.write(self.style.WARNING('No degree programs found. Please run "python manage.py seed_data" first.'))
-            return
-
         # Create Admin/Staff users for history tracking
         admin_user, _ = User.objects.get_or_create(username='admin_mock', defaults={'email': 'admin_mock@example.com', 'is_staff': True})
         staff_user, _ = User.objects.get_or_create(username='staff_mock', defaults={'email': 'staff_mock@example.com', 'is_staff': True})
@@ -32,13 +27,12 @@ class Command(BaseCommand):
         provinces = ['Cebu', 'Metro Manila', 'Davao', 'Laguna', 'Pampanga']
         cities = ['Cebu City', 'Manila', 'Quezon City', 'Davao City', 'Makati']
         barangays = ['Lahug', 'Kamputhaw', 'Guadalupe', 'Banilad', 'Talamban', 'Poblacion']
-        
-        # Fetch Reference Data
-        degrees = list(DegreeProgram.objects.all())
-
-        if not degrees:
-            self.stdout.write(self.style.ERROR('No degree programs found. Run seed_data.'))
-            return
+        bank_names = ['BDO', 'BPI', 'Metrobank', 'UnionBank', 'RCBC']
+        degree_programs = ['Bachelor of Science in Computer Science', 'Bachelor of Arts in Communication', 'Bachelor of Science in Accountancy']
+        campuses = ['University of the Philippines Cebu', 'University of Cebu', 'University of San Carlos', 'Cebu Normal University']
+        mentorship_areas = ['career-advancement', 'leadership-management', 'business-corporate', 'finance-operations', 'technology-innovation']
+        industry_tracks = ['it-software', 'banking-finance', 'marketing-advertising', 'engineering', 'healthcare']
+        mentorship_formats = ['one-on-one', 'group', 'both']
 
         # Generators
         def get_random_date(days_back=365):
@@ -53,10 +47,14 @@ class Command(BaseCommand):
             if MembershipApplication.objects.filter(email=email).exists():
                 return None
 
+            payment_method = random.choice(['gcash', 'bank', 'cash'])
             app = MembershipApplication(
                 title=random.choice(['Mr', 'Ms', 'Mrs']),
                 first_name=f_name,
+                middle_name=random.choice(first_names) if random.random() > 0.3 else None,
                 last_name=l_name,
+                suffix=random.choice(['Jr.', 'Sr.', 'III']) if random.random() > 0.8 else None,
+                maiden_name=random.choice(last_names) if random.random() > 0.8 else None,
                 date_of_birth=get_random_date(days_back=10000).date(),
                 email=email,
                 mobile_number=f"09{random.randint(100000000, 999999999)}",
@@ -64,13 +62,33 @@ class Command(BaseCommand):
                 province=random.choice(provinces),
                 city=random.choice(cities),
                 barangay=random.choice(barangays),
-                degree_program=random.choice(degrees),
+                zip_code=f"{random.randint(1000, 9999)}",
+                degree_program=random.choice(degree_programs),
+                campus=random.choice(campuses),
                 year_graduated=str(random.randint(2000, 2024)),
                 student_number=f"20{random.randint(10, 20)}-{random.randint(10000, 99999)}",
                 current_employer=random.choice(employers),
                 job_title=random.choice(job_titles),
                 industry='Professional Services',
-                payment_method=random.choice(['gcash', 'bank', 'cash']),
+                years_of_experience=random.randint(1, 20) if random.random() > 0.3 else None,
+                join_mentorship_program=random.random() > 0.5,
+                mentorship_areas=random.sample(mentorship_areas, random.randint(1, 3)) if random.random() > 0.5 else [],
+                mentorship_areas_other=None,
+                mentorship_industry_tracks=random.sample(industry_tracks, random.randint(1, 3)) if random.random() > 0.5 else [],
+                mentorship_industry_tracks_other=None,
+                mentorship_format=random.choice(mentorship_formats) if random.random() > 0.5 else None,
+                mentorship_availability=random.randint(2, 20) if random.random() > 0.5 else None,
+                payment_method=payment_method,
+                gcash_reference_number=f"{random.randint(1000000000000, 9999999999999)}" if payment_method == 'gcash' else None,
+                gcash_proof_of_payment=None,
+                bank_sender_name=f"{f_name} {l_name}" if payment_method == 'bank' else None,
+                bank_name=random.choice(bank_names) if payment_method == 'bank' else None,
+                bank_account_number=f"{random.randint(1000, 9999)}" if payment_method == 'bank' else None,
+                bank_reference_number=f"REF{random.randint(100000, 999999)}" if payment_method == 'bank' else None,
+                bank_proof_of_payment=None,
+                cash_payment_date=get_random_date(days_back=30).date() if payment_method == 'cash' else None,
+                cash_received_by=random.choice(['Staff A', 'Staff B', 'Staff C']) if payment_method == 'cash' else None,
+                payment_notes='Mock payment note' if random.random() > 0.7 else None,
                 status=status,
                 date_applied=get_random_date(days_back=60)
             )

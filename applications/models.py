@@ -2,24 +2,6 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import RegexValidator, EmailValidator
 
-
-# ============================================
-# REFERENCE DATA MODELS 
-# ============================================
-
-class DegreeProgram(models.Model):
-    name = models.CharField(max_length=200, unique=True)
-    college = models.CharField(max_length=200)
-    is_active = models.BooleanField(default=True)
-    
-    class Meta:
-        ordering = ['name']
-        db_table = 'degree_programs'
-    
-    def __str__(self):
-        return self.name
-
-
 # ============================================
 # MAIN APPLICATION MODEL
 # ============================================
@@ -50,10 +32,17 @@ class MembershipApplication(models.Model):
         ('alumni_verification', 'Alumni Verification'),
         ('payment_verification', 'Payment Verification'),
     ]
+
+    MENTORSHIP_FORMAT_CHOICES = [
+        ('one-on-one', '1-on-1 Mentorship'),
+        ('group', 'Group Mentorship'),
+        ('both', 'Either format works'),
+    ]
     
     # ===== PERSONAL DETAILS =====
     title = models.CharField(max_length=10, choices=TITLE_CHOICES)
     first_name = models.CharField(max_length=100)
+    middle_name = models.CharField(max_length=100, null=True, blank=True)
     last_name = models.CharField(max_length=100)
     suffix = models.CharField(max_length=20, blank=True, null=True)
     maiden_name = models.CharField(max_length=100, blank=True, null=True)
@@ -71,9 +60,11 @@ class MembershipApplication(models.Model):
     province = models.CharField(max_length=100)
     city = models.CharField(max_length=100)
     barangay = models.CharField(max_length=100)
+    zip_code = models.CharField(max_length=4, null=True, blank=True)
     
     # ===== ACADEMIC STATUS =====
-    degree_program = models.ForeignKey(DegreeProgram, on_delete=models.PROTECT)
+    degree_program = models.CharField(max_length=200)
+    campus = models.CharField(max_length=200, null=True, blank=True)
     year_graduated = models.CharField(max_length=4, validators=[
         RegexValidator(regex=r'^\d{4}$', message='Year must be 4 digits')
     ])
@@ -83,35 +74,29 @@ class MembershipApplication(models.Model):
     current_employer = models.CharField(max_length=200, blank=True, null=True)
     job_title = models.CharField(max_length=100, blank=True, null=True)
     industry = models.CharField(max_length=100, blank=True, null=True)
+    years_of_experience = models.IntegerField(null=True, blank=True)
     
     # ===== MEMBERSHIP & PAYMENT =====
-    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
-    data_privacy_consent = models.BooleanField(default=False)
-    
-    # GCash Payment Details
-    gcash_reference_number = models.CharField(max_length=100, blank=True, null=True)
-    gcash_proof_of_payment = models.FileField(upload_to='payment_proofs/gcash/', blank=True, null=True)
-    
-    # Bank Transfer Payment Details
-    bank_name = models.CharField(max_length=100, blank=True, null=True)
-    bank_account_number = models.CharField(max_length=50, blank=True, null=True)
-    bank_reference_number = models.CharField(max_length=100, blank=True, null=True)
-    bank_sender_name = models.CharField(max_length=100, blank=True, null=True)
-    bank_proof_of_payment = models.FileField(upload_to='payment_proofs/bank/', blank=True, null=True)
-    
-    # Cash Payment Details
-    cash_payment_date = models.DateField(blank=True, null=True)
-    cash_received_by = models.CharField(max_length=100, blank=True, null=True)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='gcash')
+    gcash_reference_number = models.CharField(max_length=50, null=True, blank=True)
+    gcash_proof_of_payment = models.FileField(upload_to='payment_proofs/gcash/', null=True, blank=True)
+    bank_sender_name = models.CharField(max_length=255, null=True, blank=True)
+    bank_name = models.CharField(max_length=100, null=True, blank=True)
+    bank_account_number = models.CharField(max_length=4, null=True, blank=True)
+    bank_reference_number = models.CharField(max_length=100, null=True, blank=True)
+    bank_proof_of_payment = models.FileField(upload_to='payment_proofs/bank/', null=True, blank=True)
+    cash_payment_date = models.DateField(null=True, blank=True)
+    cash_received_by = models.CharField(max_length=255, null=True, blank=True)
+    payment_notes = models.TextField(null=True, blank=True)
     
     # ===== MENTORSHIP PROGRAM =====
     join_mentorship_program = models.BooleanField(default=False)
-    mentorship_areas = models.JSONField(default=list, blank=True)  # List of mentorship areas
-    mentorship_areas_other = models.CharField(max_length=255, blank=True, null=True)
-    mentorship_availability = models.CharField(max_length=100, blank=True, null=True)
-    mentorship_format = models.CharField(max_length=100, blank=True, null=True)
-    mentorship_industry_tracks = models.JSONField(default=list, blank=True)  # List of industry tracks
-    mentorship_industry_tracks_other = models.CharField(max_length=255, blank=True, null=True)
-    years_of_experience = models.CharField(max_length=50, blank=True, null=True)
+    mentorship_areas = models.JSONField(null=True, blank=True, default=list)
+    mentorship_areas_other = models.TextField(null=True, blank=True)
+    mentorship_industry_tracks = models.JSONField(null=True, blank=True, default=list)
+    mentorship_industry_tracks_other = models.TextField(null=True, blank=True)
+    mentorship_format = models.CharField(max_length=50, null=True, blank=True, choices=MENTORSHIP_FORMAT_CHOICES)
+    mentorship_availability = models.IntegerField(null=True, blank=True, help_text='Hours per month')
     
     # ===== STATUS TRACKING =====
     status = models.CharField(
@@ -129,7 +114,7 @@ class MembershipApplication(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='alumni_verifications'
+        related_name='alumni_verified_applications'
     )
     
     # Payment Verification / Approval (Step 2)
@@ -139,7 +124,7 @@ class MembershipApplication(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='application_approvals'
+        related_name='approved_applications'
     )
     
     # Rejection
@@ -149,7 +134,7 @@ class MembershipApplication(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='application_rejections'
+        related_name='rejected_applications'
     )
     rejection_stage = models.CharField(
         max_length=30,
@@ -160,7 +145,7 @@ class MembershipApplication(models.Model):
     rejection_reason = models.TextField(null=True, blank=True)
     
     # Admin Notes
-    admin_notes = models.TextField(blank=True)
+    # admin_notes = models.TextField(blank=True)
     
     class Meta:
         ordering = ['-date_applied']
@@ -196,7 +181,7 @@ class VerificationHistory(models.Model):
     application = models.ForeignKey(
         MembershipApplication,
         on_delete=models.CASCADE,
-        related_name='history'
+        related_name='verification_history'
     )
     action = models.CharField(max_length=30, choices=ACTION_CHOICES)
     performed_by = models.ForeignKey(

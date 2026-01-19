@@ -251,7 +251,7 @@ def export_members(request):
             member.id,
             member.full_name,
             member.email,
-            member.application.degree_program.name,
+            member.application.degree_program,
             member.application.year_graduated,
             member.member_since.strftime('%Y-%m-%d'),
             'Yes' if member.is_active else 'No'

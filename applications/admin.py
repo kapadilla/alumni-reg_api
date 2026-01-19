@@ -1,14 +1,7 @@
 from django.contrib import admin
 from .models import (
-    DegreeProgram, MembershipApplication, VerificationHistory
+    MembershipApplication, VerificationHistory
 )
-
-
-@admin.register(DegreeProgram)
-class DegreeProgramAdmin(admin.ModelAdmin):
-    list_display = ['name', 'college', 'is_active']
-    list_filter = ['is_active', 'college']
-    search_fields = ['name']
 
 
 @admin.register(MembershipApplication)
@@ -26,7 +19,7 @@ class MembershipApplicationAdmin(admin.ModelAdmin):
             'fields': ('email', 'mobile_number', 'current_address', 'province', 'city', 'barangay')
         }),
         ('Academic Information', {
-            'fields': ('degree_program', 'year_graduated', 'student_number')
+            'fields': ('degree_program', 'campus', 'year_graduated', 'student_number')
         }),
         ('Professional Information', {
             'fields': ('current_employer', 'job_title', 'industry')
