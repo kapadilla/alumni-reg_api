@@ -25,9 +25,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = []
+# Allowed hosts - comma-separated list in production
+ALLOWED_HOSTS = config(
+    "ALLOWED_HOSTS",
+    default="localhost,127.0.0.1",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
 
 
 # Application definition
@@ -46,6 +51,7 @@ INSTALLED_APPS = [
     "django_extensions",
     "django_filters",
     # Local apps
+    "config",
     "applications",
     "members",
     "accounts",
@@ -63,9 +69,12 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]
+# CORS settings - allow localhost in development, configure via env in production
+CORS_ALLOWED_ORIGINS = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="http://localhost:3000,http://127.0.0.1:3000",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
 
 CORS_ALLOW_CREDENTIALS = True
 
