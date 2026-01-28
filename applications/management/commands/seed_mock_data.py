@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from applications.models import (
     MembershipApplication, VerificationHistory
 )
@@ -48,6 +49,8 @@ class Command(BaseCommand):
                 return None
 
             payment_method = random.choice(['gcash', 'bank', 'cash'])
+            year_graduated = str(random.randint(2000, 2024)) if random.random() > 0.2 else None
+            
             app = MembershipApplication(
                 first_name=f_name,
                 middle_name=random.choice(first_names) if random.random() > 0.3 else None,
@@ -64,7 +67,7 @@ class Command(BaseCommand):
                 zip_code=f"{random.randint(1000, 9999)}",
                 degree_program=random.choice(degree_programs),
                 campus=random.choice(campuses),
-                year_graduated=str(random.randint(2000, 2024)),
+                year_graduated=year_graduated,
                 student_number=f"20{random.randint(10, 20)}-{random.randint(10000, 99999)}",
                 current_employer=random.choice(employers),
                 job_title=random.choice(job_titles),
@@ -98,6 +101,15 @@ class Command(BaseCommand):
                 app.rejection_reason = "Mock rejection reason: Data mismatch or invalid document."
                 app.rejected_at = timezone.now()
                 app.rejected_by = admin_user
+            
+            # Create dummy ID photo (required)
+            photo_content = f"FAKE_IMAGE_DATA_{random.randint(1000, 9999)}".encode()
+            app.id_photo.save(f"mock_id_{app.date_applied.timestamp()}.jpg", ContentFile(photo_content), save=False)
+            
+            # Create dummy TOR attachment if year_graduated is not provided
+            if not year_graduated:
+                tor_content = f"FAKE_TOR_DATA_{random.randint(1000, 9999)}".encode()
+                app.tor_attachment.save(f"mock_tor_{app.date_applied.timestamp()}.pdf", ContentFile(tor_content), save=False)
             
             app.save()
 

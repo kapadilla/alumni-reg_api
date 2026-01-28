@@ -40,6 +40,7 @@ class MembershipApplication(models.Model):
     suffix = models.CharField(max_length=20, blank=True, null=True)
     maiden_name = models.CharField(max_length=100, blank=True, null=True)
     date_of_birth = models.DateField()
+    id_photo = models.FileField(upload_to="applications/id_photos/", null=True, blank=True)
 
     # Contact Information
     email = models.EmailField(unique=True, validators=[EmailValidator()])
@@ -69,6 +70,11 @@ class MembershipApplication(models.Model):
         validators=[RegexValidator(regex=r"^\d{4}$", message="Year must be 4 digits")],
     )
     student_number = models.CharField(max_length=20, blank=True, null=True)
+    tor_attachment = models.FileField(
+        upload_to="applications/tor/",
+        null=True,
+        blank=True,
+    )
 
     # ===== PROFESSIONAL INFORMATION =====
     current_employer = models.CharField(max_length=200, blank=True, null=True)

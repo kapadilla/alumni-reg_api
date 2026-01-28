@@ -100,6 +100,7 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
             "city": obj.city,
             "barangay": obj.barangay,
             "zipCode": obj.zip_code,
+            "idPhoto": obj.id_photo.url if obj.id_photo else None,
         }
 
     def get_academicStatus(self, obj):
@@ -108,6 +109,7 @@ class MembershipApplicationDetailSerializer(serializers.ModelSerializer):
             "degreeProgram": obj.degree_program,
             "yearGraduated": obj.year_graduated,
             "studentNumber": obj.student_number,
+            "torAttachment": obj.tor_attachment.url if obj.tor_attachment else None,
         }
 
     def get_professional(self, obj):
@@ -159,6 +161,8 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
     mentorship = serializers.JSONField(required=False, allow_null=True)
 
     # File uploads
+    idPhoto = serializers.FileField(required=True)
+    torAttachment = serializers.FileField(required=False, allow_null=True)
     gcashProofOfPayment = serializers.FileField(required=False, allow_null=True)
     bankProofOfPayment = serializers.FileField(required=False, allow_null=True)
 
@@ -232,6 +236,21 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"academicStatus": {"campus": "Campus is required"}}
             )
+
+        # Validate idPhoto is provided
+        if "idPhoto" not in data or data["idPhoto"] is None:
+            raise serializers.ValidationError(
+                {"idPhoto": "1x1 ID Photo is required"}
+            )
+
+        # Validate yearGraduated and torAttachment
+        year_graduated = academic.get("yearGraduated")
+        if not year_graduated:
+            # If yearGraduated is empty/blank, torAttachment is required
+            if "torAttachment" not in data or data["torAttachment"] is None:
+                raise serializers.ValidationError(
+                    {"torAttachment": "Transcript of Records is required when not graduated yet"}
+                )
 
         # Note: yearGraduated is optional per form specification
 
@@ -351,6 +370,8 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             "membership": membership,
             "mentorship": mentorship,
             "files": {
+                "id_photo": data.get("idPhoto"),
+                "tor_attachment": data.get("torAttachment"),
                 "gcash_proof": data.get("gcashProofOfPayment"),
                 "bank_proof": data.get("bankProofOfPayment"),
             },
@@ -379,6 +400,7 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             suffix=empty_to_none(personal.get("suffix")),
             maiden_name=empty_to_none(personal.get("maidenName")),
             date_of_birth=personal["dateOfBirth"],
+            id_photo=files.get("id_photo"),
             email=personal["email"],
             mobile_number=personal["mobileNumber"],
             current_address=personal["currentAddress"],
@@ -391,6 +413,7 @@ class MembershipApplicationCreateSerializer(serializers.Serializer):
             campus=empty_to_none(academic.get("campus")),
             year_graduated=academic["yearGraduated"],
             student_number=empty_to_none(academic.get("studentNumber")),
+            tor_attachment=files.get("tor_attachment"),
             # Professional
             current_employer=empty_to_none(professional.get("currentEmployer")),
             job_title=empty_to_none(professional.get("jobTitle")),
