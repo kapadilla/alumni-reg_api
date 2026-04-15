@@ -1,5 +1,8 @@
 # Alumni Registration System - Backend API
 
+### Frontend Application
+The frontend for this API can be found at [alumni-reg](https://github.com/kapadilla/alumni-reg).
+
 ## 📁 Project Structure
 ```
 alumni-reg_api/
